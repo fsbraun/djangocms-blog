@@ -121,7 +121,7 @@ class ViewTest(BaseTest):
             self.assertContains(response, context["post_list"][0].get_absolute_url())
             blog_menu = request.toolbar.get_or_create_menu("djangocms_blog", _("Blog"))
 
-            self.assertEqual(len(blog_menu.items), 3)
+            self.assertEqual(len(blog_menu.items), 5)
             self.assertEqual(
                 len(blog_menu.find_items(ModalItem, url=reverse("admin:djangocms_blog_post_changelist"))), 1
             )
@@ -185,7 +185,6 @@ class ViewTest(BaseTest):
 
             PARLER_FALLBACK = add_default_language_settings(PARLER_FALLBACK)  # noqa: N806
             with override_parler_settings(PARLER_LANGUAGES=PARLER_FALLBACK):
-
                 view_obj = PostListView()
                 request = self.get_page_request(pages[1], self.user, lang="fr", edit=True)
                 view_obj.request = request
@@ -232,6 +231,70 @@ class ViewTest(BaseTest):
                 self.assertEqual(context["post"], posts[0])
                 self.assertEqual(context["post"].language_code, "it")
                 self.assertTrue(context["meta"])
+
+    def test_post_detail_on_different_site(self):
+        pages = self.get_pages()
+        post1 = self._get_post(
+            {
+                "title": "First post",
+                "abstract": "<p>first line</p>",
+                "description": "This is the description",
+                "keywords": "keyword1, keyword2",
+                "app_config": "sample_app",
+            },
+            sites=(self.site_1,),
+        )
+        post2 = self._get_post(
+            {
+                "title": "Second post",
+                "abstract": "<p>second post first line</p>",
+                "description": "Second post description",
+                "keywords": "keyword3, keyword4",
+                "app_config": "sample_app",
+            },
+            sites=(self.site_2,),
+        )
+
+        post1.publish = True
+        post1.save()
+        post2.publish = True
+        post2.save()
+
+        with smart_override("en"):
+            request = self.get_page_request(pages[1], AnonymousUser(), lang="en", edit=False)
+            view_obj = PostDetailView()
+            view_obj.request = request
+            view_obj.namespace, view_obj.config = get_app_instance(request)
+
+            with self.assertRaises(Http404):
+                view_obj.kwargs = {"slug": post2.slug}
+                view_obj.get_object()
+
+            self.assertEqual(view_obj.get_queryset().count(), 1)
+
+            view_obj.kwargs = {"slug": post1.slug}
+            self.assertTrue(view_obj.get_object())
+
+            with self.settings(**{"SITE_ID": self.site_2.pk}):
+                request = self.get_page_request(pages[1], AnonymousUser(), lang="en", edit=False)
+                view_obj = PostDetailView()
+                view_obj.request = request
+                view_obj.namespace, view_obj.config = get_app_instance(request)
+
+                with self.assertRaises(Http404):
+                    view_obj.kwargs = {"slug": post1.slug}
+                    view_obj.get_object()
+
+                self.assertEqual(view_obj.get_queryset().count(), 1)
+
+                view_obj.kwargs = {"slug": post2.slug}
+                self.assertTrue(view_obj.get_object())
+
+                post1.sites.add(self.site_2)
+                post1.save()
+                view_obj.kwargs = {"slug": post1.slug}
+                self.assertTrue(view_obj.get_object())
+                self.assertEqual(view_obj.get_queryset().count(), 2)
 
     def test_post_archive_view(self):
         pages = self.get_pages()
@@ -398,7 +461,6 @@ class TaggedItemViewTest(BaseTest):
 
         with smart_override("en"):
             with switch_language(posts[0], "en"):
-
                 request = self.get_page_request(pages[1], self.user, path=posts[0].get_absolute_url())
 
                 feed = LatestEntriesFeed()
@@ -424,6 +486,21 @@ class TaggedItemViewTest(BaseTest):
                 feed.namespace = self.app_config_1.namespace
                 feed.config = self.app_config_1
                 self.assertEqual(list(feed.items("tag-2")), [posts[0]])
+
+        with smart_override("en"):
+            with switch_language(posts[0], "en"):
+                posts[0].include_in_rss = False
+                posts[0].save()
+
+                request = self.get_page_request(pages[1], self.user, path=posts[0].get_absolute_url())
+
+                feed = LatestEntriesFeed()
+                feed.namespace, feed.config = get_app_instance(request)
+                self.assertEqual(len(list(feed.items())), 0)
+                self.reload_urlconf()
+
+                posts[0].include_in_rss = True
+                posts[0].save()
 
 
 class SitemapViewTest(BaseTest):

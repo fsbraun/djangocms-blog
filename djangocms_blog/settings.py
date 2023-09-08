@@ -34,6 +34,14 @@ PERMALINKS = (  # noqa
 Permalinks styles.
 """
 
+BLOG_UNICODE_SLUGS = True
+"""
+.. _UNICODE_SLUGS:
+
+Allow unicode chars in auto-generated slugs.
+"""
+
+
 PERMALINKS_URLS = {  # noqa
     PERMALINK_TYPE_FULL_DATE: "<int:year>/<int:month>/<int:day>/<str:slug>/",
     PERMALINK_TYPE_SHORT_DATE: "<int:year>/<int:month>/<str:slug>/",
@@ -88,6 +96,15 @@ BLOG_IMAGE_FULL_SIZE = {"size": "640", "crop": True, "upscale": False}
 
 Easy-thumbnail alias configuration for the post main image when shown on the post detail;
 it's a dictionary with ``size``, ``crop`` and ``upscale`` keys.
+"""
+
+BLOG_META_IMAGE_SIZE = None
+"""
+.. _META_IMAGE_SIZE:
+
+Easy-thumbnail alias configuration for the post meta image;
+it's a dictionary with ``size``, ``crop`` and ``upscale`` keys.
+Recommended values are {"size": (1200, 630), "crop": True, "upscale": False}
 """
 
 BLOG_URLCONF = "djangocms_blog.urls"
@@ -529,6 +546,20 @@ BLOG_ARCHIVE_PLUGIN_NAME = _("Archive")
 .. _ARCHIVE_PLUGIN_NAME:
 
 Name of the plugin showing the blog archive index.
+"""
+
+BLOG_FEATURED_POSTS_PLUGIN_NAME = _("Featured Posts")
+"""
+.. _FEATURED_POSTS_PLUGIN_NAME:
+
+Name of the plugin showing the selected posts.
+"""
+
+BLOG_FEATURED_POSTS_PLUGIN_NAME_CACHED = _("Featured Posts - Cache")
+"""
+.. _FEATURED_POSTS_PLUGIN_NAME_CACHED:
+
+Name of the plugin showing the selected posts (cached version).
 """
 
 BLOG_FEED_CACHE_TIMEOUT = 3600

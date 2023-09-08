@@ -15,9 +15,10 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.functional import cached_property
-from django.utils.html import escape, strip_tags
+from django.utils.html import strip_tags
 from django.utils.translation import get_language, gettext, gettext_lazy as _
 from djangocms_text_ckeditor.fields import HTMLField
+from easy_thumbnails.files import get_thumbnailer
 from filer.fields.image import FilerImageField
 from filer.models import ThumbnailOption
 from meta.models import ModelMeta
@@ -209,7 +210,7 @@ class BlogCategory(BlogMetaMixin, TranslatableModel):
 
     def get_description(self):
         description = self.safe_translation_getter("meta_description", any_language=True)
-        return escape(strip_tags(description)).strip()
+        return strip_tags(description).strip()
 
 
 class Post(KnockerModel, BlogMetaMixin, TranslatableModel):
@@ -234,6 +235,7 @@ class Post(KnockerModel, BlogMetaMixin, TranslatableModel):
     pinned = models.IntegerField(_("pinning priority"), blank=True, null=True,
                                  help_text=_("Leave blank for regular order by date"))
     publish = models.BooleanField(_("publish"), default=False)
+    include_in_rss = models.BooleanField(_("include in RSS feed"), default=True)
     categories = models.ManyToManyField(
         "djangocms_blog.BlogCategory", verbose_name=_("category"), related_name="blog_posts", blank=True
     )
@@ -277,7 +279,9 @@ class Post(KnockerModel, BlogMetaMixin, TranslatableModel):
 
     translations = TranslatedFields(
         title=models.CharField(_("title"), max_length=752),
-        slug=models.SlugField(_("slug"), max_length=752, blank=True, db_index=True, allow_unicode=True),
+        slug=models.SlugField(
+            _("slug"), max_length=752, blank=True, db_index=True, allow_unicode=get_setting("UNICODE_SLUGS")
+        ),
         subtitle=models.CharField(verbose_name=_("subtitle"), max_length=767, blank=True, default=""),
         abstract=HTMLField(_("abstract"), blank=True, default="", configuration="BLOG_ABSTRACT_CKEDITOR"),
         meta_description=models.TextField(verbose_name=_("post meta description"), blank=True, default=""),
@@ -423,19 +427,29 @@ class Post(KnockerModel, BlogMetaMixin, TranslatableModel):
         description = self.safe_translation_getter("meta_description", any_language=True)
         if not description:
             description = self.safe_translation_getter("abstract", any_language=True)
-        return escape(strip_tags(description)).strip()
+        return strip_tags(description).strip()
 
     def get_image_full_url(self):
         if self.main_image:
+            thumbnail_options = get_setting("META_IMAGE_SIZE")
+            if thumbnail_options:
+                thumbnail_url = get_thumbnailer(self.main_image).get_thumbnail(thumbnail_options).url
+                return self.build_absolute_uri(thumbnail_url)
             return self.build_absolute_uri(self.main_image.url)
         return ""
 
     def get_image_width(self):
         if self.main_image:
+            thumbnail_options = get_setting("META_IMAGE_SIZE")
+            if thumbnail_options:
+                return get_thumbnailer(self.main_image).get_thumbnail(thumbnail_options).width
             return self.main_image.width
 
     def get_image_height(self):
         if self.main_image:
+            thumbnail_options = get_setting("META_IMAGE_SIZE")
+            if thumbnail_options:
+                return get_thumbnailer(self.main_image).get_thumbnail(thumbnail_options).height
             return self.main_image.height
 
     def get_tags(self):
@@ -614,6 +628,20 @@ class AuthorEntriesPlugin(BasePostPlugin):
             # "the number of author articles to be displayed"
             author.posts = qs[: self.latest_posts]
         return authors
+
+
+class FeaturedPostsPlugin(BasePostPlugin):
+    posts = SortedManyToManyField(Post, verbose_name=_("Featured posts"))
+
+    def __str__(self):
+        return _("Featured posts")
+
+    def copy_relations(self, oldinstance):
+        self.posts.set(oldinstance.posts.all())
+
+    def get_posts(self, request, published_only=True):
+        posts = self.post_queryset(request, published_only)
+        return posts
 
 
 class GenericBlogPlugin(BasePostPlugin):

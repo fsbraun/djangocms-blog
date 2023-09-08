@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import timedelta
 from unittest import SkipTest
+from urllib.parse import quote
 
 import parler
 from cms.api import add_plugin
@@ -12,14 +13,15 @@ from django.contrib import admin
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sites.models import Site
+from django.core.handlers.base import BaseHandler
 from django.http import QueryDict
 from django.test import override_settings
 from django.urls import reverse
 from django.utils.encoding import force_str
 from django.utils.html import strip_tags
-from django.utils.http import urlquote
 from django.utils.timezone import now
 from django.utils.translation import get_language, override
+from easy_thumbnails.files import get_thumbnailer
 from filer.models import ThumbnailOption
 from menus.menu_pool import menu_pool
 from parler.tests.utils import override_parler_settings
@@ -196,11 +198,34 @@ class AdminTest(BaseTest):
 
         # unless a referer is set
         request.META["HTTP_REFERER"] = "/"
+        # reset headers cached property
+        del request.headers
         response = post_admin.publish_post(request, "1000000")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/")
 
+    def test_admin_post_delete(self):
+        self.get_pages()
+
+        post_admin = admin.site._registry[Post]
+        request = self.get_page_request("/", self.user, r"/en/blog/", edit=False)
+
+        post = self._get_post(self._post_data[0]["en"])
+        post = self._get_post(self._post_data[0]["it"], post, "it")
+
+        post_admin.delete_model(request, post)
+
+    def test_admin_post_delete_queryset(self):
+        self.get_pages()
+
+        post_admin = admin.site._registry[Post]
+        request = self.get_page_request("/", self.user, r"/en/blog/", edit=False)
+
+        post_admin.delete_queryset(request, post_admin.get_queryset(request))
+
     def test_admin_changelist_view(self):
+        self.get_pages()
+
         posts = self.get_posts()
         post_admin = admin.site._registry[Post]
         request = self.get_page_request("/", self.user, r"/en/blog/", edit=False)
@@ -380,6 +405,7 @@ class AdminTest(BaseTest):
         )
 
     def test_admin_fieldsets(self):
+        handler = BaseHandler()
         post_admin = admin.site._registry[Post]
         request = self.get_page_request(
             "/", self.user_staff, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False
@@ -452,7 +478,7 @@ class AdminTest(BaseTest):
             request = self.get_request(
                 "/", "en", user=self.user, path=r"/en/blog/?app_config=%s" % self.app_config_1.pk
             )
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             response = post_admin.add_view(request)
@@ -487,7 +513,7 @@ class AdminTest(BaseTest):
             request = self.get_request(
                 "/", "en", user=self.user, path=r"/en/blog/?app_config=%s" % self.app_config_1.pk
             )
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             post_admin._sites = None
@@ -589,6 +615,7 @@ class AdminTest(BaseTest):
     def test_admin_auto_author(self):
         pages = self.get_pages()
         data = deepcopy(self._post_data[0]["en"])
+        handler = BaseHandler()
 
         with self.login_user_context(self.user):
             self.app_config_1.app_data.config.set_author = True
@@ -600,7 +627,7 @@ class AdminTest(BaseTest):
             request = self.post_request(
                 pages[0], "en", user=self.user, data=data, path=r"/en/blog/?app_config=%s" % self.app_config_1.pk
             )
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             response = post_admin.add_view(request)
@@ -618,7 +645,7 @@ class AdminTest(BaseTest):
             request = self.post_request(
                 pages[0], "en", user=self.user, data=data, path=r"/en/blog/?app_config=%s" % self.app_config_1.pk
             )
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             response = post_admin.add_view(request)
@@ -637,7 +664,7 @@ class AdminTest(BaseTest):
                 request = self.post_request(
                     pages[0], "en", user=self.user, data=data, path=r"/en/blog/?app_config=%s" % self.app_config_1.pk
                 )
-                msg_mid = MessageMiddleware()
+                msg_mid = MessageMiddleware(handler)
                 msg_mid.process_request(request)
                 post_admin = admin.site._registry[Post]
                 response = post_admin.add_view(request)
@@ -673,6 +700,7 @@ class AdminTest(BaseTest):
     def test_admin_post_text(self):
         pages = self.get_pages()
         post = self._get_post(self._post_data[0]["en"])
+        handler = BaseHandler()
 
         with pause_knocks(post):
             with self.login_user_context(self.user):
@@ -681,7 +709,7 @@ class AdminTest(BaseTest):
                     request = self.post_request(
                         pages[0], "en", user=self.user, data=data, path="/en/?edit_fields=post_text"
                     )
-                    msg_mid = MessageMiddleware()
+                    msg_mid = MessageMiddleware(handler)
                     msg_mid.process_request(request)
                     post_admin = admin.site._registry[Post]
                     response = post_admin.edit_field(request, post.pk, "en")
@@ -706,6 +734,7 @@ class AdminTest(BaseTest):
     def test_admin_site(self):
         pages = self.get_pages()
         post = self._get_post(self._post_data[0]["en"])
+        handler = BaseHandler()
 
         # no restrictions, sites are assigned
         with self.login_user_context(self.user):
@@ -716,7 +745,7 @@ class AdminTest(BaseTest):
             }
             request = self.post_request(pages[0], "en", user=self.user, data=data, path="/en/")
             self.assertEqual(post.sites.count(), 0)
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             response = post_admin.change_view(request, str(post.pk))
@@ -740,7 +769,7 @@ class AdminTest(BaseTest):
             }
             request = self.post_request(pages[0], "en", user=self.user, data=data, path="/en/")
             self.assertEqual(post.sites.count(), 2)
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             post_admin._sites = None
@@ -762,7 +791,7 @@ class AdminTest(BaseTest):
             data = {"sites": [self.site_3.pk], "title": "some title", "app_config": self.app_config_1.pk}
             request = self.post_request(pages[0], "en", user=self.user, data=data, path="/en/")
             self.assertEqual(post.sites.count(), 3)
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             post_admin._sites = None
@@ -784,7 +813,7 @@ class AdminTest(BaseTest):
             data = {"sites": [], "title": "some title", "app_config": self.app_config_1.pk}
             request = self.post_request(pages[0], "en", user=self.user, data=data, path="/en/")
             self.assertEqual(post.sites.count(), 2)
-            msg_mid = MessageMiddleware()
+            msg_mid = MessageMiddleware(handler)
             msg_mid.process_request(request)
             post_admin = admin.site._registry[Post]
             post_admin._sites = None
@@ -801,6 +830,7 @@ class AdminTest(BaseTest):
         Tests that after changing apphook config menu structure the menu content is different: new
         value is taken immediately into account
         """
+        handler = BaseHandler()
         self._reload_menus()
 
         pages = self.get_pages()
@@ -816,7 +846,7 @@ class AdminTest(BaseTest):
                 data["config-sitemap_changefreq"] = "weekly"
                 data["config-sitemap_priority"] = "0.5"
                 request = self.post_request(pages[0], "en", user=self.user, data=data)
-                msg_mid = MessageMiddleware()
+                msg_mid = MessageMiddleware(handler)
                 msg_mid.process_request(request)
                 config_admin = admin.site._registry[BlogConfig]
                 config_admin.change_view(request, str(self.app_config_1.pk))
@@ -1002,6 +1032,34 @@ class ModelsTest(BaseTest):
         post.save()
         self.assertFalse(post.is_published)
 
+    def test_model_meta_image_setting(self):
+        post = self._get_post(self._post_data[0]["en"])
+        post.main_image = self.create_filer_image_object()
+        post.save()
+
+        post.set_current_language("en")
+        meta_en = post.as_meta()
+        self.assertEqual(meta_en.image, post.build_absolute_uri(post.main_image.url))
+        self.assertEqual(meta_en.image_width, post.main_image.width)
+        self.assertEqual(meta_en.image_height, post.main_image.height)
+
+        with override_settings(BLOG_META_IMAGE_SIZE={"size": (1200, 630), "crop": True, "upscale": False}):
+            meta_en = post.as_meta()
+            self.assertEqual(
+                meta_en.image,
+                post.build_absolute_uri(
+                    get_thumbnailer(post.main_image).get_thumbnail(get_setting("META_IMAGE_SIZE")).url
+                ),
+            )
+            self.assertEqual(
+                meta_en.image_width,
+                get_thumbnailer(post.main_image).get_thumbnail(get_setting("META_IMAGE_SIZE")).width,
+            )
+            self.assertEqual(
+                meta_en.image_height,
+                get_thumbnailer(post.main_image).get_thumbnail(get_setting("META_IMAGE_SIZE")).height,
+            )
+
     def test_urls(self):
         self.get_pages()
         post = self._get_post(self._post_data[0]["en"])
@@ -1047,13 +1105,13 @@ class ModelsTest(BaseTest):
         self.app_config_1.app_data.config.url_patterns = "full_date"
         self.app_config_1.save()
         post.app_config = self.app_config_1
-        self.assertTrue(re.match(r".*\d{4}/\d{2}/\d{2}/%s/$" % urlquote(post.slug), post.get_absolute_url()))
+        self.assertTrue(re.match(r".*\d{4}/\d{2}/\d{2}/%s/$" % quote(post.slug), post.get_absolute_url()))
 
         # short date
         self.app_config_1.app_data.config.url_patterns = "short_date"
         self.app_config_1.save()
         post.app_config = self.app_config_1
-        self.assertTrue(re.match(r".*\d{4}/\d{2}/%s/$" % urlquote(post.slug), post.get_absolute_url()))
+        self.assertTrue(re.match(r".*\d{4}/\d{2}/%s/$" % quote(post.slug), post.get_absolute_url()))
 
         # category
         self.app_config_1.app_data.config.url_patterns = "category"
@@ -1062,7 +1120,7 @@ class ModelsTest(BaseTest):
 
         self.assertTrue(
             re.match(
-                r".*{}/{}/$".format(urlquote(post.categories.first().slug), urlquote(post.slug)),
+                r".*{}/{}/$".format(quote(post.categories.first().slug), quote(post.slug)),
                 post.get_absolute_url(),
             )
         )
@@ -1071,7 +1129,7 @@ class ModelsTest(BaseTest):
         self.app_config_1.app_data.config.url_patterns = "category"
         self.app_config_1.save()
         post.app_config = self.app_config_1
-        self.assertTrue(re.match(r".*/%s/$" % urlquote(post.slug), post.get_absolute_url()))
+        self.assertTrue(re.match(r".*/%s/$" % quote(post.slug), post.get_absolute_url()))
 
     def test_url_language(self):
         self.get_pages()
@@ -1297,6 +1355,30 @@ class ModelsTest2(BaseTest):
         self.assertEqual(len(plugin.get_posts(request)), 2)
         self.assertEqual(plugin.get_authors(request)[0].count, 2)
 
+    def test_plugin_featured_posts(self):
+        post1 = self._get_post(self._post_data[0]["en"])
+        post1.publish = True
+        post1.save()
+        post2 = self._get_post(self._post_data[1]["en"])
+        request = self.get_page_request("/", AnonymousUser(), r"/en/blog/", edit=False)
+        plugin = add_plugin(post1.content, "BlogFeaturedPostsPlugin", language="en", app_config=self.app_config_1)
+        plugin.posts.add(post1, post2)
+        self.assertEqual(len(plugin.get_posts(request)), 1)
+
+        post2.publish = True
+        post2.save()
+        self.assertEqual(len(plugin.get_posts(request)), 2)
+
+    def test_copy_plugin_featured_post(self):
+        post1 = self._get_post(self._post_data[0]["en"])
+        post2 = self._get_post(self._post_data[1]["en"])
+        plugin = add_plugin(post1.content, "BlogFeaturedPostsPlugin", language="en", app_config=self.app_config_1)
+        plugin.posts.add(post1, post2)
+        plugins = list(post1.content.cmsplugin_set.filter(language="en").order_by("path", "depth", "position"))
+        copy_plugins_to(plugins, post2.content)
+        new = list(downcast_plugins(post2.content.cmsplugin_set.all()))
+        self.assertEqual(set(new[0].posts.all()), {post1, post2})
+
     def test_copy_plugin_author(self):
         post1 = self._get_post(self._post_data[0]["en"])
         post2 = self._get_post(self._post_data[1]["en"])
@@ -1344,7 +1426,13 @@ class ModelsTest2(BaseTest):
         plugin = add_plugin(post1.content, "BlogArchivePlugin", language="en", app_config=self.app_config_1)
         self.assertEqual(force_str(plugin.__str__()), "generic blog plugin")
 
+        plugin = add_plugin(post1.content, "BlogFeaturedPostsPlugin", language="en", app_config=self.app_config_1)
+        self.assertEqual(plugin.__str__(), "Featured posts")
+
+        # create fake empty post - assign a random pk to trick ORM / parler to think the object has been saved
+        # due to how safe_translation_getter works
         no_translation_post = Post()
+        no_translation_post.pk = 1000000
         no_translation_default_title = "Post (no translation)"
         self.assertEqual(force_str(no_translation_post), no_translation_default_title)
 
