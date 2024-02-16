@@ -18,10 +18,6 @@ jobs:
             cms: 39
           - django: 42
             cms: 39
-          - django: 32
-            cms: 311
-          - django: 42
-            cms: 311
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
@@ -55,7 +51,11 @@ jobs:
       run: |
         tox -e$TOX_ENV
         .tox/$TOX_ENV/bin/coverage xml
-        .tox/$TOX_ENV/bin/coveralls
+    - name: Coveralls Parallel
+      uses: coverallsapp/github-action@v2
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        parallel: true
     - uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -67,3 +67,12 @@ jobs:
         image: redis
         ports:
           - 6379:6379
+  finish:
+    needs: test
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Coveralls Finished
+      uses: coverallsapp/github-action@v2
+      with:
+        parallel-finished: true

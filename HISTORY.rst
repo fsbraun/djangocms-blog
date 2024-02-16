@@ -6,6 +6,59 @@ History
 
 .. towncrier release notes start
 
+2.0.7 (2024-01-16)
+==================
+
+Bugfixes
+--------
+
+- Pin Django CMS version < 4, update Github test matrix (#786)
+
+
+2.0.6 (2023-12-22)
+==================
+
+Features
+--------
+
+- Switch to Coveralls Github action (#774)
+
+
+Bugfixes
+--------
+
+- Add sphinx-rtd-theme dependency in setup (#769)
+- Add force_str to FeaturedPostsPlugin __str__ method (#780)
+- Fix FeaturedPostsPlugin get_posts method rendering all posts instead of selected ones (#781)
+
+
+2.0.5 (2023-09-26)
+==================
+
+Bugfixes
+--------
+
+- Pin correct django-meta version (#763)
+
+
+2.0.4 (2023-09-25)
+==================
+
+Bugfixes
+--------
+
+- Bump django-meta version in setup.cfg (#761)
+
+
+2.0.3 (2023-09-22)
+==================
+
+Features
+--------
+
+- Migrate to bump-my-version (#759)
+
+
 2.0.2 (2023-08-30)
 ==================
 
