@@ -145,26 +145,6 @@ class PostListView(BaseConfigListViewMixin, ListView):
         return super().get_queryset()
 
 
-class CategoryListView(BlogConfigMixin, ViewUrlMixin, TranslatableSlugMixin, ListView):
-    model = BlogCategory
-    context_object_name = "category_list"
-    base_template_name = "category_list.html"
-    view_url_name = "djangocms_blog:categories-all"
-
-    def get_queryset(self):
-        language = get_language()
-        queryset = self.model._default_manager.filter(app_config__namespace=self.namespace).active_translations(
-            language_code=language
-        )
-        queryset = queryset.filter(parent__isnull=True, priority__isnull=False)  # Only top-level categories
-        setattr(self.request, get_setting("CURRENT_NAMESPACE"), self.config)
-        return queryset
-
-    def get_template_names(self):
-        template_path = (self.config and self.config.template_prefix) or "djangocms_blog"
-        return os.path.join(template_path, self.base_template_name)
-
-
 class PostArchiveView(BaseConfigListViewMixin, ListView):
     model = PostContent
     context_object_name = "postcontent_list"

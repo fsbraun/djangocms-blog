@@ -32,15 +32,7 @@ class BlogApp(CMSApp):
 
     def get_urls(self, page=None, language=None, **kwargs):
         urlconf = get_setting("URLCONF")
-        if page is None or not page.application_namespace or isinstance(urlconf, str):
-            return [urlconf]  # Single urlconf
-        return [
-            getattr(
-                self.app_config.objects.get(namespace=page.application_namespace),
-                "urlconf",
-                get_setting("URLCONF")[0][0],
-            )
-        ]  # Default if no urlconf is configured
+        return [urlconf]  # Single urlconf
 
     @property
     def urls(self):

@@ -102,31 +102,6 @@ class BlogCategory(BlogMetaMixin, ModelMeta, TranslatableModel):
         verbose_name=_("app. config"),
         help_text=_("When selecting a value, the form is reloaded to get the updated default"),
     )
-    priority = models.IntegerField(_("priority"), blank=True, null=True)
-    main_image = FilerImageField(
-        verbose_name=_("main image"),
-        blank=True,
-        null=True,
-        on_delete=models.SET_NULL,
-        related_name="djangocms_category_image",
-    )
-    main_image_thumbnail = models.ForeignKey(
-        thumbnail_model,
-        verbose_name=_("main image thumbnail"),
-        related_name="djangocms_category_thumbnail",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-    )
-    main_image_full = models.ForeignKey(
-        thumbnail_model,
-        verbose_name=_("main image full"),
-        related_name="djangocms_category_full",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-    )
-
     translations = TranslatedFields(
         name=models.CharField(_("name"), max_length=752),
         slug=models.SlugField(
@@ -165,7 +140,6 @@ class BlogCategory(BlogMetaMixin, ModelMeta, TranslatableModel):
     class Meta:
         verbose_name = _("post category")
         verbose_name_plural = _("post categories")
-        ordering = (F("priority").asc(nulls_last=True),)
 
     def descendants(self):
         children = []
@@ -179,11 +153,6 @@ class BlogCategory(BlogMetaMixin, ModelMeta, TranslatableModel):
     def linked_posts(self):
         """returns all linked posts in the same appconfig namespace"""
         return self.blog_posts.filter(app_config=self.app_config)
-
-    @cached_property
-    def pinned_posts(self):
-        """returns all linked posts which have a pinned value of at least 1"""
-        return self.linked_posts.filter(pinned__gt=0)
 
     @cached_property
     def count(self):
@@ -246,14 +215,6 @@ class Post(KnockerModel, models.Model):
     date_published = models.DateTimeField(_("published since"), null=True, blank=True)
     date_published_end = models.DateTimeField(_("published until"), null=True, blank=True)
     date_featured = models.DateTimeField(_("featured date"), null=True, blank=True)
-    pinned = models.IntegerField(
-        _("pinning priority"),
-        blank=True,
-        null=True,
-        help_text=_(
-            "Pinned posts are shown in ascending order before unpinned ones. " "Leave blank for regular order by date."
-        ),
-    )
     publish = models.BooleanField(_("publish"), default=False)
     include_in_rss = models.BooleanField(_("include in RSS feed"), default=True)
     categories = models.ManyToManyField(
@@ -345,7 +306,6 @@ class Post(KnockerModel, models.Model):
     class Meta:
         verbose_name = _("post")
         verbose_name_plural = _("posts")
-        ordering = (F("pinned").asc(nulls_last=True), "-date_published", "-date_created")
         get_latest_by = "date_published"
 
     def __init__(self, *args, **kwargs):
@@ -359,7 +319,7 @@ class Post(KnockerModel, models.Model):
 
     @admin.display(boolean=True)
     def featured(self):
-        return bool(self.pinned) or self.date_featured >= now()
+        return self.date_featured >= now()
 
     def get_content(self, language=None, show_draft_content=False):
         if not language:
@@ -546,7 +506,7 @@ class PostContent(BlogMetaMixin, ModelMeta, models.Model):
     class Meta:
         verbose_name = _("article content")
         verbose_name_plural = _("article contents")
-        ordering = (F("post__pinned").asc(nulls_last=True), "-post__date_published", "-post__date_created")
+        ordering = ("-post__date_published", "-post__date_created")
         get_latest_by = "date_published"
 
     # Gruping fields

@@ -98,14 +98,10 @@ Easy-thumbnail alias configuration for the post main image when shown on the pos
 it's a dictionary with ``size``, ``crop`` and ``upscale`` keys.
 """
 
-BLOG_URLCONF = (
-    ("djangocms_blog.urls", _("Blog: Blog list at root url of blog")),
-    ("djangocms_blog.urls_hub", _("Content hub: Category list at root url of blog")),
-)
+BLOG_URLCONF = "djangocms_blog.urls"
 """
 .. _URLCONF:
-
-List of alternative URL configurations which can be set per app hook.
+Standard Apphook URLConf.
 """
 
 BLOG_PAGINATION = 10
@@ -605,14 +601,6 @@ BLOG_WIZARD_CONTENT_PLUGIN_BODY = "body"
 .. _WIZARD_CONTENT_PLUGIN_BODY:
 
 Name of the plugin field to add wizard text.
-"""
-
-BLOG_STRUCTURE = 0
-"""
-.. _STRUCTURE:
-
-Default structure of blog: 0 for a list of posts ordered by publication date. 1 for a set of categories ordered by
-priority.
 """
 
 params = {param: value for param, value in locals().items() if param.startswith("BLOG_")}

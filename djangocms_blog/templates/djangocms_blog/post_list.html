@@ -13,11 +13,6 @@
         {% elif tagged_entries %}{% trans "Tag" %} &ndash; {{ tagged_entries|capfirst }}
         {% elif category %}{% trans "Category" %} &ndash; {% render_model category "name" %}{% endif %}
         </h2>
-        {% if category.abstract %}
-          <div class="category-abstract">
-            {% render_model category "abstract" %}
-          </div>
-        {% endif %}
     </header>
     {% endblock %}
     {% for postcontent in postcontent_list %}
