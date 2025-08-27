@@ -20,6 +20,7 @@ from django.utils.encoding import force_str
 from django.utils.html import strip_tags
 from django.utils.timezone import now
 from django.utils.translation import get_language, override
+from easy_thumbnails.files import get_thumbnailer
 from filer.models import ThumbnailOption
 from menus.menu_pool import menu_pool
 from parler.tests.utils import override_parler_settings
@@ -201,6 +202,25 @@ class AdminTest(BaseTest):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/")
 
+    def test_admin_post_delete(self):
+        self.get_pages()
+
+        post_admin = admin.site._registry[Post]
+        request = self.get_page_request("/", self.user, r"/en/blog/", edit=False)
+
+        post = self._get_post(self._post_data[0]["en"])
+        post = self._get_post(self._post_data[0]["it"], post, "it")
+
+        post_admin.delete_model(request, post)
+
+    def test_admin_post_delete_queryset(self):
+        self.get_pages()
+
+        post_admin = admin.site._registry[Post]
+        request = self.get_page_request("/", self.user, r"/en/blog/", edit=False)
+
+        post_admin.delete_queryset(request, post_admin.get_queryset(request))
+
     def test_admin_changelist_view(self):
         self.get_pages()
 
@@ -358,7 +378,9 @@ class AdminTest(BaseTest):
         BlogCategory.objects.create(name="category different branch", app_config=self.app_config_2)
 
         post_admin = admin.site._registry[BlogCategory]
-        request = self.get_toolbar_request("/", self.user, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False)
+        request = self.get_toolbar_request(
+            "/", self.user, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False
+        )
 
         # Add view shows all the exising categories
         response = post_admin.add_view(request)
@@ -375,7 +397,9 @@ class AdminTest(BaseTest):
         )
 
         # Test second apphook categories
-        request = self.get_toolbar_request("/", self.user, r"/en/blog/?app_config=%s" % self.app_config_2.pk, edit=False)
+        request = self.get_toolbar_request(
+            "/", self.user, r"/en/blog/?app_config=%s" % self.app_config_2.pk, edit=False
+        )
         response = post_admin.add_view(request)
         self.assertTrue(
             response.context_data["adminform"].form.fields["parent"].queryset,
@@ -449,7 +473,9 @@ class AdminTest(BaseTest):
             fsets = post_admin.get_fieldsets(request)
             self.assertFalse("sites" in fsets[1][1]["fields"][0])
 
-        request = self.get_toolbar_request("/", self.user, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False)
+        request = self.get_toolbar_request(
+            "/", self.user, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False
+        )
         fsets = post_admin.get_fieldsets(request)
         self.assertTrue("author" in fsets[1][1]["fields"][0])
 
@@ -567,7 +593,9 @@ class AdminTest(BaseTest):
             fsets = post_admin.get_fieldsets(request)
             self.assertFalse("sites" in fsets[1][1]["fields"][0])
 
-        request = self.get_toolbar_request("/", self.user, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False)
+        request = self.get_toolbar_request(
+            "/", self.user, r"/en/blog/?app_config=%s" % self.app_config_1.pk, edit=False
+        )
         fsets = post_admin.get_fieldsets(request)
         self.assertTrue("author" in fsets[1][1]["fields"])
 
@@ -1011,6 +1039,34 @@ class ModelsTest(BaseTest):
         post.save()
         self.assertFalse(post.is_published)
 
+    def test_model_meta_image_setting(self):
+        post = self._get_post(self._post_data[0]["en"])
+        post.main_image = self.create_filer_image_object()
+        post.save()
+
+        post.set_current_language("en")
+        meta_en = post.as_meta()
+        self.assertEqual(meta_en.image, post.build_absolute_uri(post.main_image.url))
+        self.assertEqual(meta_en.image_width, post.main_image.width)
+        self.assertEqual(meta_en.image_height, post.main_image.height)
+
+        with override_settings(BLOG_META_IMAGE_SIZE={"size": (1200, 630), "crop": True, "upscale": False}):
+            meta_en = post.as_meta()
+            self.assertEqual(
+                meta_en.image,
+                post.build_absolute_uri(
+                    get_thumbnailer(post.main_image).get_thumbnail(get_setting("META_IMAGE_SIZE")).url
+                ),
+            )
+            self.assertEqual(
+                meta_en.image_width,
+                get_thumbnailer(post.main_image).get_thumbnail(get_setting("META_IMAGE_SIZE")).width,
+            )
+            self.assertEqual(
+                meta_en.image_height,
+                get_thumbnailer(post.main_image).get_thumbnail(get_setting("META_IMAGE_SIZE")).height,
+            )
+
     def test_urls(self):
         self.get_pages()
         post = self._get_post(self._post_data[0]["en"])
@@ -1306,6 +1362,31 @@ class ModelsTest2(BaseTest):
         self.assertEqual(len(plugin.get_posts(request)), 2)
         self.assertEqual(plugin.get_authors(request)[0].count, 2)
 
+    def test_plugin_featured_posts(self):
+        post1 = self._get_post(self._post_data[0]["en"])
+        post1.publish = True
+        post1.save()
+        post2 = self._get_post(self._post_data[1]["en"])
+        request = self.get_page_request("/", AnonymousUser(), r"/en/blog/", edit=False)
+        plugin = add_plugin(post1.content, "BlogFeaturedPostsPlugin", language="en", app_config=self.app_config_1)
+        plugin.posts.add(post1, post2)
+        self.assertEqual(len(plugin.get_posts(request)), 1)
+        post2.publish = True
+        post2.save()
+        self.assertEqual(len(plugin.get_posts(request)), 2)
+        plugin.posts.remove(post2)
+        self.assertEqual(len(plugin.get_posts(request)), 1)
+
+    def test_copy_plugin_featured_post(self):
+        post1 = self._get_post(self._post_data[0]["en"])
+        post2 = self._get_post(self._post_data[1]["en"])
+        plugin = add_plugin(post1.content, "BlogFeaturedPostsPlugin", language="en", app_config=self.app_config_1)
+        plugin.posts.add(post1, post2)
+        plugins = list(post1.content.cmsplugin_set.filter(language="en").order_by("path", "depth", "position"))
+        copy_plugins_to(plugins, post2.content)
+        new = list(downcast_plugins(post2.content.cmsplugin_set.all()))
+        self.assertEqual(set(new[0].posts.all()), {post1, post2})
+
     def test_copy_plugin_author(self):
         post1 = self._get_post(self._post_data[0]["en"])
         post2 = self._get_post(self._post_data[1]["en"])
@@ -1357,6 +1438,9 @@ class ModelsTest2(BaseTest):
 
         plugin = add_plugin(post1_content.content, "BlogArchivePlugin", language="en", app_config=self.app_config_1)
         self.assertEqual(force_str(plugin.__str__()), "generic blog plugin")
+
+        plugin = add_plugin(post1.content, "BlogFeaturedPostsPlugin", language="en", app_config=self.app_config_1)
+        self.assertEqual(plugin.__str__(), "Featured posts")
 
         # create fake empty post - assign a random pk to trick ORM / parler to think the object has been saved
         # due to how safe_translation_getter works
