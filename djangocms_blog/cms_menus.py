@@ -4,7 +4,7 @@ from cms.apphook_pool import apphook_pool
 from cms.menu_bases import CMSAttachMenu
 from django.contrib.sites.shortcuts import get_current_site
 from django.db.models.signals import post_delete, post_save
-from django.urls import resolve
+from django.urls import Resolver404, resolve
 from django.utils.translation import get_language_from_request, gettext_lazy as _
 from menus.base import Modifier, NavigationNode
 from menus.menu_pool import menu_pool
@@ -148,10 +148,14 @@ class BlogNavModifier(Modifier):
             app = apphook_pool.get_apphook(request.current_page.application_urls)
 
         if app and app.app_config:
-            namespace = resolve(request.path).namespace
+            try:
+                namespace = resolve(request.path).namespace
+            except Resolver404:  # pragma: no cover
+                return nodes
             if not self._config.get(namespace, False):
                 self._config[namespace] = app.get_config(namespace)
             config = self._config[namespace]
+
         try:
             if config and (not isinstance(config, BlogConfig) or config.menu_structure != MENU_TYPE_CATEGORIES):
                 return nodes
